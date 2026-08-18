@@ -31,6 +31,12 @@
   "bundle": {
     "active": true,
     "targets": ["nsis", "msi"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.ico"
+    ],
     "category": "Productivity",
     "shortDescription": "Fast, quiet Markdown reading for Windows",
     "longDescription": "MD Reader is a lightweight offline Markdown reader built for fast startup and distraction-free reading.",
