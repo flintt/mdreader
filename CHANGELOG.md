@@ -10,6 +10,7 @@
 - 加入纯 Rust Mermaid SVG 渲染及内存/磁盘缓存
 - 修复 Mermaid SVG 中文与英文文字显示
 - 加入原生 NSIS、MSI 与便携版 EXE 的 Windows 发布流程
+- Windows 版静态链接 MSVC CRT，便携版无需额外运行库
 
 ## 0.1.0 — 2026-08-18
 

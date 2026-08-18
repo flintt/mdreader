@@ -33,7 +33,7 @@ cargo install cargo-packager --version 0.11.8 --locked
 cargo packager --release
 ```
 
-NSIS、MSI 安装包会生成到 `dist/`。仓库的 `Build native Windows` 工作流也会在推送 `v*` 标签时测试、构建并发布安装包和便携版 EXE。
+NSIS、MSI 安装包会生成到 `dist/`。仓库的 `Build native Windows` 工作流也会在推送 `v*` 标签时测试、构建并发布安装包和便携版 EXE。Windows 版静态链接 MSVC CRT，便携版不要求用户另装 Visual C++ Redistributable。
 
 ## 快捷键
 
