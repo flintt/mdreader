@@ -1,0 +1,49 @@
+[package]
+name = "mdreader"
+version = "0.2.0"
+edition = "2024"
+rust-version = "1.95"
+description = "A fast native Markdown reader for Windows"
+license = "MIT"
+repository = "https://github.com/flintt/mdreader"
+build = "build.rs"
+
+[dependencies]
+blake3 = "1.8"
+eframe = { version = "0.36.1", default-features = false, features = ["accesskit", "default_fonts", "links", "persistence", "wayland", "wgpu", "x11"] }
+egui_extras = { version = "0.36.1", default-features = false, features = ["file", "svg_text"] }
+egui_commonmark = { version = "0.25.0", default-features = false, features = ["embedded_image", "load-images", "pulldown_cmark", "svg"] }
+fontdb = "0.23"
+image = { version = "0.25", default-features = false, features = ["gif", "jpeg", "png", "webp"] }
+mermaid-rs-renderer = { version = "0.3.1", default-features = false }
+rfd = "0.17.2"
+serde = { version = "1", features = ["derive"] }
+walkdir = "2"
+
+[build-dependencies]
+winresource = "0.1"
+
+[profile.release]
+codegen-units = 1
+lto = "thin"
+opt-level = 3
+panic = "abort"
+strip = true
+
+[package.metadata.packager]
+product-name = "MD Reader"
+identifier = "com.mdreader.desktop"
+version = "0.2.0"
+formats = ["nsis", "wix"]
+out-dir = "dist"
+before-packaging-command = "cargo build --release"
+binaries = [{ path = "mdreader", main = true }]
+icons = ["assets/icons/icon.ico", "assets/icons/128x128.png"]
+category = "Productivity"
+description = "Fast native Markdown reading for Windows"
+long-description = "MD Reader is a native Rust Markdown reader with GPU rendering and native Mermaid diagrams."
+file-associations = [{ extensions = ["md", "markdown", "mdown", "mkd"], name = "Markdown Document", description = "Markdown document", role = "Viewer" }]
+
+[package.metadata.packager.nsis]
+install-mode = "currentUser"
+installer-icon = "assets/icons/icon.ico"

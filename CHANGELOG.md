@@ -1,9 +1,20 @@
 # Changelog
 
+## 0.2.0 — 2026-08-18
+
+- 完全移除 Tauri、WebView、HTML、JavaScript 和 Node.js 运行链路
+- 使用 Rust + egui + wgpu 重写为 GPU 绘制的原生桌面应用
+- 使用原生滚动视口，仅布局和绘制视口附近的 Markdown 内容
+- 文件读取、目录扫描和 Mermaid 排版移至后台线程
+- 使用稳定路径 ID 的递归文件树，切换文档后保持展开状态
+- 加入纯 Rust Mermaid SVG 渲染及内存/磁盘缓存
+- 修复 Mermaid SVG 中文与英文文字显示
+- 加入原生 NSIS、MSI 与便携版 EXE 的 Windows 发布流程
+
 ## 0.1.0 — 2026-08-18
 
 - 首个公开版本
-- Tauri 2 + Rust 原生文件读取与目录扫描
+- Tauri 2 + Rust 文件读取与目录扫描
 - Web Worker Markdown 解析和渲染缓存
 - GFM、代码按需高亮、本地图片和相对文档链接
 - Mermaid 图表按视口渲染，支持深浅主题
