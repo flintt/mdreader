@@ -42,7 +42,7 @@ icons = ["assets/icons/icon.ico", "assets/icons/128x128.png"]
 category = "Productivity"
 description = "Fast native Markdown reading for Windows"
 long-description = "MD Reader is a native Rust Markdown reader with GPU rendering and native Mermaid diagrams."
-file-associations = [{ extensions = ["md", "markdown", "mdown", "mkd"], name = "Markdown Document", description = "Markdown document", role = "Viewer" }]
+file-associations = [{ extensions = ["md", "markdown", "mdown", "mkd"], name = "Markdown Document", description = "Markdown document", role = "viewer" }]
 
 [package.metadata.packager.nsis]
 install-mode = "currentUser"
