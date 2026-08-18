@@ -23,6 +23,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           cache-all-crates: true
+          cache-on-failure: true
 
       - name: Test native core
         run: cargo test --locked

@@ -45,5 +45,5 @@ long-description = "MD Reader is a native Rust Markdown reader with GPU renderin
 file-associations = [{ extensions = ["md", "markdown", "mdown", "mkd"], name = "Markdown Document", description = "Markdown document", role = "viewer" }]
 
 [package.metadata.packager.nsis]
-install-mode = "currentUser"
+installer-mode = "currentUser"
 installer-icon = "assets/icons/icon.ico"
