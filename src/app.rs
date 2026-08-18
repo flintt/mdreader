@@ -30,10 +30,12 @@ struct RecentDocument {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(default)]
 struct Preferences {
     theme: ThemePreference,
     font_size: f32,
     content_width: f32,
+    auto_width: bool,
     sidebar_open: bool,
     recents: Vec<RecentDocument>,
 }
@@ -43,7 +45,8 @@ impl Default for Preferences {
         Self {
             theme: ThemePreference::System,
             font_size: 17.0,
-            content_width: 820.0,
+            content_width: 960.0,
+            auto_width: true,
             sidebar_open: true,
             recents: Vec::new(),
         }
@@ -504,11 +507,15 @@ impl NativeApp {
             .show(root, |ui| {
                 if let Some(document) = &self.document {
                     ui.style_mut().url_in_tooltip = true;
-                    let available_width = ui.available_width();
-                    let content_width = self
-                        .preferences
-                        .content_width
-                        .min((available_width - 32.0).max(280.0));
+                    ui.spacing_mut().scroll = egui::style::ScrollStyle::solid();
+                    let scroll_bar_width = ui.spacing().scroll.allocated_width();
+                    let canvas_width = (ui.available_width() - scroll_bar_width).max(1.0);
+                    let reader_layout = reader_layout(
+                        canvas_width,
+                        self.preferences.auto_width,
+                        self.preferences.content_width,
+                    );
+                    let content_width = reader_layout.content_width;
                     if (self.last_reader_width - content_width).abs() > 1.0
                         || self.page_heights.len() != document.pages.len()
                     {
@@ -535,7 +542,10 @@ impl NativeApp {
                     });
                     let mut scroll = egui::ScrollArea::vertical()
                         .id_salt(("native-reader", &document.path))
-                        .auto_shrink([false, false]);
+                        .auto_shrink([false, false])
+                        .scroll_bar_visibility(
+                            egui::scroll_area::ScrollBarVisibility::AlwaysVisible,
+                        );
                     if let Some(offset) = requested_offset {
                         scroll = scroll.vertical_scroll_offset(offset);
                     }
@@ -543,7 +553,6 @@ impl NativeApp {
                     let pages = &document.pages;
                     let page_heights = &mut self.page_heights;
                     let markdown_cache = &mut self.markdown_cache;
-                    let horizontal_margin = ((available_width - content_width) / 2.0).max(12.0);
                     scroll.show_viewport(ui, |ui, viewport| {
                         let preload = viewport.height() * 0.75;
                         let visible_min = (viewport.min.y - preload).max(0.0);
@@ -554,17 +563,26 @@ impl NativeApp {
                             let expected_height = page_heights[index];
                             let page_bottom = page_top + expected_height;
                             if page_bottom < visible_min || page_top > visible_max {
-                                ui.allocate_space(egui::vec2(available_width, expected_height));
+                                ui.allocate_space(egui::vec2(canvas_width, expected_height));
                             } else {
-                                let response = ui.horizontal_top(|ui| {
-                                    ui.add_space(horizontal_margin);
-                                    ui.vertical(|ui| {
-                                        ui.set_width(content_width);
-                                        CommonMarkViewer::new()
-                                            .default_width(Some(content_width as usize))
-                                            .max_image_width(Some(content_width as usize))
-                                            .enable_scroll_to_heading(true)
-                                            .show(ui, markdown_cache, &page.source);
+                                // Keep every virtual page on the exact same left edge. The row's
+                                // horizontal item spacing is disabled so it cannot silently add
+                                // pixels after the gutter and make alignment drift.
+                                let response = ui.scope(|ui| {
+                                    let item_spacing_x = ui.spacing().item_spacing.x;
+                                    ui.spacing_mut().item_spacing.x = 0.0;
+                                    ui.horizontal_top(|ui| {
+                                        ui.add_space(reader_layout.left_margin);
+                                        ui.scope(|ui| {
+                                            ui.spacing_mut().item_spacing.x = item_spacing_x;
+                                            ui.set_width(content_width);
+                                            CommonMarkViewer::new()
+                                                .default_width(Some(content_width as usize))
+                                                .max_image_width(Some(content_width as usize))
+                                                .render_html_fn(Some(&render_markdown_html))
+                                                .enable_scroll_to_heading(true)
+                                                .show(ui, markdown_cache, &page.source);
+                                        });
                                     });
                                 });
                                 let measured = response.response.rect.height().max(24.0);
@@ -599,6 +617,7 @@ impl NativeApp {
         }
         let previous_font_size = self.preferences.font_size;
         let previous_content_width = self.preferences.content_width;
+        let previous_auto_width = self.preferences.auto_width;
         egui::Window::new("阅读设置")
             .open(&mut self.settings_open)
             .resizable(false)
@@ -612,17 +631,25 @@ impl NativeApp {
                     egui::Slider::new(&mut self.preferences.font_size, 14.0..=24.0)
                         .text("正文字号"),
                 );
-                ui.add(
-                    egui::Slider::new(&mut self.preferences.content_width, 580.0..=1200.0)
-                        .text("页面宽度"),
-                );
+                ui.checkbox(&mut self.preferences.auto_width, "自动适应窗口宽度");
+                ui.add_enabled_ui(!self.preferences.auto_width, |ui| {
+                    ui.add(
+                        egui::Slider::new(&mut self.preferences.content_width, 580.0..=1400.0)
+                            .text("页面宽度"),
+                    );
+                });
+                if self.preferences.auto_width {
+                    ui.weak("保持 5% 页边距，宽屏时限制为 1040 像素");
+                }
             });
         context.set_theme(self.preferences.theme);
         if (previous_font_size - self.preferences.font_size).abs() > f32::EPSILON {
             apply_typography(context, self.preferences.font_size);
             self.last_reader_width = 0.0;
         }
-        if (previous_content_width - self.preferences.content_width).abs() > f32::EPSILON {
+        if (previous_content_width - self.preferences.content_width).abs() > f32::EPSILON
+            || previous_auto_width != self.preferences.auto_width
+        {
             self.last_reader_width = 0.0;
         }
     }
@@ -773,6 +800,85 @@ fn initial_page_height(estimate: f32, font_size: f32, content_width: f32) -> f32
     estimate * font_scale * width_scale
 }
 
+#[derive(Clone, Copy, Debug)]
+struct ReaderLayout {
+    content_width: f32,
+    left_margin: f32,
+}
+
+fn reader_layout(available_width: f32, automatic: bool, preferred_width: f32) -> ReaderLayout {
+    let available_width = available_width.max(1.0);
+    let minimum_margin = if automatic {
+        (available_width * 0.05).clamp(12.0, 80.0)
+    } else {
+        12.0
+    };
+    let maximum_content_width = (available_width - minimum_margin * 2.0).max(1.0);
+    let requested_width = if automatic {
+        1040.0
+    } else {
+        preferred_width.max(280.0)
+    };
+    let content_width = requested_width.min(maximum_content_width);
+    ReaderLayout {
+        content_width,
+        left_margin: ((available_width - content_width) * 0.5).max(0.0),
+    }
+}
+
+fn render_markdown_html(ui: &mut egui::Ui, html: &str) {
+    let Some(uri) = mermaid_uri_from_html(html) else {
+        ui.label(html);
+        return;
+    };
+
+    let available_width = ui.available_width().max(1.0);
+    ui.vertical(|ui| {
+        ui.set_width(available_width);
+        let fit_id = Id::new(("mermaid-fit-width", uri));
+        let mut fit_width = ui
+            .ctx()
+            .data(|data| data.get_temp::<bool>(fit_id))
+            .unwrap_or(false);
+        ui.horizontal(|ui| {
+            ui.weak("Mermaid");
+            if ui.selectable_label(!fit_width, "清晰原图").clicked() {
+                fit_width = false;
+            }
+            if ui.selectable_label(fit_width, "适应页面").clicked() {
+                fit_width = true;
+            }
+        });
+        ui.ctx()
+            .data_mut(|data| data.insert_temp(fit_id, fit_width));
+
+        let image = egui::Image::new(uri)
+            .fit_to_original_size(1.0)
+            .show_loading_spinner(true)
+            .alt_text("Mermaid diagram");
+        if fit_width {
+            ui.add(image.max_width(available_width));
+        } else {
+            ui.spacing_mut().scroll = egui::style::ScrollStyle::thin();
+            egui::ScrollArea::horizontal()
+                .id_salt(("mermaid-horizontal", uri))
+                .max_width(available_width)
+                .auto_shrink([false, true])
+                .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::VisibleWhenNeeded)
+                .show(ui, |ui| {
+                    ui.add(image);
+                });
+        }
+    });
+}
+
+fn mermaid_uri_from_html(html: &str) -> Option<&str> {
+    const PREFIX: &str = "<div data-mdreader-mermaid=\"";
+    let value = html.trim().strip_prefix(PREFIX)?;
+    let (uri, suffix) = value.split_once("\"")?;
+    (!uri.is_empty() && suffix.trim() == "></div>").then_some(uri)
+}
+
 fn install_system_font(context: &egui::Context) {
     let mut database = Database::new();
     database.load_system_fonts();
@@ -831,5 +937,32 @@ mod tests {
         assert_eq!(strip_markdown_extension("README.MD"), "README");
         assert_eq!(strip_markdown_extension("notes.markdown"), "notes");
         assert_eq!(strip_markdown_extension("archive.zip"), "archive.zip");
+    }
+
+    #[test]
+    fn automatic_reader_width_is_centered_and_responsive() {
+        let narrow = reader_layout(500.0, true, 700.0);
+        assert_eq!(narrow.content_width, 450.0);
+        assert_eq!(narrow.left_margin, 25.0);
+
+        let wide = reader_layout(1600.0, true, 700.0);
+        assert_eq!(wide.content_width, 1040.0);
+        assert_eq!(wide.left_margin, 280.0);
+    }
+
+    #[test]
+    fn manual_reader_width_keeps_a_stable_center_line() {
+        let layout = reader_layout(1200.0, false, 820.0);
+        assert_eq!(layout.content_width, 820.0);
+        assert_eq!(layout.left_margin, 190.0);
+    }
+
+    #[test]
+    fn recognizes_only_the_internal_mermaid_html_marker() {
+        assert_eq!(
+            mermaid_uri_from_html("<div data-mdreader-mermaid=\"file:///tmp/diagram.svg\"></div>"),
+            Some("file:///tmp/diagram.svg")
+        );
+        assert_eq!(mermaid_uri_from_html("<div>ordinary html</div>"), None);
     }
 }

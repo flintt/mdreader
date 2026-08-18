@@ -6,10 +6,11 @@ use std::{
     time::{Instant, SystemTime},
 };
 
-use mermaid_rs_renderer::render;
+use mermaid_rs_renderer::{RenderOptions, render_with_options};
 
 const MAX_MARKDOWN_BYTES: u64 = 32 * 1024 * 1024;
 const TARGET_PAGE_LINES: usize = 64;
+const MERMAID_CACHE_VERSION: &str = "v4";
 
 pub type MermaidCache = Arc<Mutex<HashMap<String, String>>>;
 
@@ -333,22 +334,28 @@ fn parse_atx_heading(line: &str) -> Option<(usize, String, Option<String>)> {
 fn render_mermaid_markdown(source: &str, cache: &MermaidCache) -> String {
     let key = blake3::hash(source.as_bytes()).to_hex().to_string();
     if let Some(uri) = cache.lock().ok().and_then(|cache| cache.get(&key).cloned()) {
-        return format!("\n![Mermaid diagram](<{uri}>)\n\n");
+        return mermaid_markdown(&uri);
     }
 
-    let cache_directory = std::env::temp_dir().join("mdreader-mermaid-v0.2");
+    let cache_directory =
+        std::env::temp_dir().join(format!("mdreader-mermaid-{MERMAID_CACHE_VERSION}"));
     let svg_path = cache_directory.join(format!("{key}.svg"));
     if svg_path.is_file() {
         let uri = file_uri(&svg_path);
         if let Ok(mut cache) = cache.lock() {
             cache.insert(key, uri.clone());
         }
-        return format!("\n![Mermaid diagram](<{uri}>)\n\n");
+        return mermaid_markdown(&uri);
     }
 
-    let result = std::panic::catch_unwind(|| render(source));
+    let result = std::panic::catch_unwind(|| render_with_options(source, mermaid_render_options()));
     match result {
         Ok(Ok(svg)) => {
+            let svg = svg.replacen(
+                "<svg ",
+                "<svg shape-rendering=\"geometricPrecision\" text-rendering=\"optimizeLegibility\" ",
+                1,
+            );
             if let Err(error) = fs::create_dir_all(&cache_directory)
                 .and_then(|()| fs::write(&svg_path, svg.as_bytes()))
             {
@@ -358,7 +365,7 @@ fn render_mermaid_markdown(source: &str, cache: &MermaidCache) -> String {
             if let Ok(mut cache) = cache.lock() {
                 cache.insert(key, uri.clone());
             }
-            format!("\n![Mermaid diagram](<{uri}>)\n\n")
+            mermaid_markdown(&uri)
         }
         Ok(Err(error)) => format!(
             "\n> **Mermaid 图表无法渲染：** {}\n\n```mermaid\n{source}\n```\n\n",
@@ -366,6 +373,39 @@ fn render_mermaid_markdown(source: &str, cache: &MermaidCache) -> String {
         ),
         Err(_) => format!("\n> **Mermaid 图表渲染异常**\n\n```mermaid\n{source}\n```\n\n"),
     }
+}
+
+fn mermaid_render_options() -> RenderOptions {
+    let mut options = RenderOptions::modern()
+        .with_node_spacing(60.0)
+        .with_rank_spacing(64.0);
+
+    options.theme.font_size = 16.0;
+    options.theme.primary_border_color = "#64748B".into();
+    options.theme.line_color = "#334155".into();
+    options.theme.cluster_border = "#94A3B8".into();
+    options.theme.sequence_actor_border = "#64748B".into();
+    options.theme.sequence_actor_line = "#475569".into();
+
+    options.layout.node_padding_x = 34.0;
+    options.layout.node_padding_y = 18.0;
+    options.layout.label_line_height = 1.4;
+    options.layout.max_label_width_chars = 24;
+
+    let flowchart = &mut options.layout.flowchart;
+    flowchart.auto_spacing.min_spacing = 36.0;
+    flowchart.auto_spacing.dense_scale_floor = 0.85;
+    for bucket in &mut flowchart.auto_spacing.buckets {
+        bucket.scale = bucket.scale.max(0.85);
+    }
+    flowchart.objective.max_aspect_ratio = 6.0;
+    flowchart.routing.occupancy_weight = 1.4;
+
+    options
+}
+
+fn mermaid_markdown(uri: &str) -> String {
+    format!("\n<div data-mdreader-mermaid=\"{uri}\"></div>\n\n")
 }
 
 fn file_uri(path: &Path) -> String {
@@ -400,6 +440,25 @@ mod tests {
         assert_eq!(count, 1);
         assert!(rendered.contains("file://"));
         assert!(rendered.contains(".svg"));
+        assert!(rendered.contains("data-mdreader-mermaid"));
+    }
+
+    #[test]
+    fn keeps_dense_mermaid_layout_readable() {
+        let options = mermaid_render_options();
+        assert_eq!(options.theme.font_size, 16.0);
+        assert!(options.layout.node_spacing >= 60.0);
+        assert!(options.layout.rank_spacing >= 64.0);
+        assert!(options.layout.flowchart.auto_spacing.min_spacing >= 36.0);
+        assert!(
+            options
+                .layout
+                .flowchart
+                .auto_spacing
+                .buckets
+                .iter()
+                .all(|bucket| bucket.scale >= 0.85)
+        );
     }
 
     #[test]
