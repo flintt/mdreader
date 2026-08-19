@@ -881,18 +881,8 @@ fn mermaid_uri_from_html(html: &str) -> Option<&str> {
 
 fn install_system_font(context: &egui::Context) {
     let mut database = Database::new();
-    database.load_system_fonts();
-    let families = [
-        Family::Name("Microsoft YaHei UI"),
-        Family::Name("Microsoft YaHei"),
-        Family::Name("Noto Sans CJK SC"),
-        Family::Name("Source Han Sans SC"),
-        Family::SansSerif,
-    ];
-    let Some(id) = database.query(&Query {
-        families: &families,
-        ..Query::default()
-    }) else {
+    load_preferred_font_files(&mut database);
+    let Some(id) = preferred_font_id(&database) else {
         return;
     };
     let Some((bytes, index)) = database.with_face_data(id, |data, index| (data.to_vec(), index))
@@ -916,6 +906,52 @@ fn install_system_font(context: &egui::Context) {
             .push("mdreader-system".into());
     }
     context.set_fonts(definitions);
+}
+
+fn load_preferred_font_files(database: &mut Database) {
+    #[cfg(target_os = "windows")]
+    {
+        let system_root = std::env::var_os("SYSTEMROOT")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from(r"C:\Windows"));
+        for path in windows_font_candidates(&system_root) {
+            if database.load_font_file(path).is_ok() && preferred_font_id(database).is_some() {
+                return;
+            }
+        }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    database.load_system_fonts();
+}
+
+fn preferred_font_id(database: &Database) -> Option<fontdb::ID> {
+    database.query(&Query {
+        families: &[
+            Family::Name("Microsoft YaHei UI"),
+            Family::Name("Microsoft YaHei"),
+            Family::Name("SimSun"),
+            Family::Name("DengXian"),
+            Family::Name("SimHei"),
+            Family::Name("Noto Sans CJK SC"),
+            Family::Name("Source Han Sans SC"),
+            Family::SansSerif,
+        ],
+        ..Query::default()
+    })
+}
+
+#[cfg(any(target_os = "windows", test))]
+fn windows_font_candidates(system_root: &Path) -> [PathBuf; 6] {
+    let fonts = system_root.join("Fonts");
+    [
+        fonts.join("msyh.ttc"),
+        fonts.join("msyhbd.ttc"),
+        fonts.join("simsun.ttc"),
+        fonts.join("Deng.ttf"),
+        fonts.join("simhei.ttf"),
+        fonts.join("segoeui.ttf"),
+    ]
 }
 
 #[cfg(test)]
@@ -964,5 +1000,21 @@ mod tests {
             Some("file:///tmp/diagram.svg")
         );
         assert_eq!(mermaid_uri_from_html("<div>ordinary html</div>"), None);
+    }
+
+    #[test]
+    fn windows_font_candidates_do_not_scan_directories() {
+        let candidates = windows_font_candidates(Path::new("system-root"));
+        assert_eq!(
+            candidates[0],
+            PathBuf::from("system-root").join("Fonts").join("msyh.ttc")
+        );
+        assert_eq!(
+            candidates[2],
+            PathBuf::from("system-root")
+                .join("Fonts")
+                .join("simsun.ttc")
+        );
+        assert!(candidates.iter().all(|path| path.extension().is_some()));
     }
 }

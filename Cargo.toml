@@ -1,6 +1,6 @@
 [package]
 name = "mdreader"
-version = "0.2.1"
+version = "0.2.2"
 edition = "2024"
 rust-version = "1.95"
 description = "A fast native Markdown reader for Windows"
@@ -27,13 +27,13 @@ winresource = "0.1"
 codegen-units = 1
 lto = "thin"
 opt-level = 3
-panic = "abort"
+panic = "unwind"
 strip = true
 
 [package.metadata.packager]
 product-name = "MD Reader"
 identifier = "com.mdreader.desktop"
-version = "0.2.1"
+version = "0.2.2"
 formats = ["nsis", "wix"]
 out-dir = "dist"
 before-packaging-command = "cargo build --release"
